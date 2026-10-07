@@ -29,11 +29,11 @@ Rules, sampling, filters, and experiments work the same as for [code evaluators]
 
 ## Create an HTTP evaluator
 
-<Callout type="info">
-  The UI for creating HTTP evaluators is coming soon.
-</Callout>
+In the evaluator setup, choose **HTTP endpoint** and enter the endpoint URL and optional request headers. Mark header values that contain credentials as secret; they are stored encrypted and never shown again. When you edit the evaluator, leave a secret value empty to keep the stored one.
 
-In the evaluator setup, choose **HTTP** and enter the endpoint URL and optional request headers. Mark header values that contain credentials as secret; they are stored encrypted. Langfuse generates a signing secret for the evaluator that you use to [verify requests](#verify-requests).
+After you save a new HTTP evaluator, Langfuse shows its signing secret once. Copy it and use it to [verify requests](#verify-requests).
+
+Creating, editing, and test-calling HTTP evaluators requires the Owner or Admin role, the same as webhooks, because they send trace data to an external URL.
 
 Do not put credentials in the URL. The URL is visible to project members; use secret headers instead.
 
