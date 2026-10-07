@@ -1,0 +1,178 @@
+---
+title: HTTP evaluators
+description: Send observations to your own HTTPS endpoint and store the scores it returns. Self-hosted only, beta.
+---
+
+# HTTP evaluators
+
+<AvailabilityBanner
+  availability={{
+    hobby: "not-available",
+    core: "not-available",
+    pro: "not-available",
+    enterprise: "not-available",
+    selfHosted: "public-beta",
+  }}
+/>
+
+<Callout type="info">
+  **Self-hosted only, off by default.** HTTP evaluators are in beta and must be
+  enabled with `LANGFUSE_HTTP_EVAL_ENABLED=true` on the web and worker
+  containers. See the [environment
+  variables](/self-hosting/configuration#http-evaluators). They are not
+  available on Langfuse Cloud.
+</Callout>
+
+HTTP evaluators send each matching observation to an HTTPS endpoint you operate and store the [scores](/docs/evaluation/scores/overview) it returns. Use them when your evaluation logic already runs as a service, needs third-party libraries or models, or must stay inside your infrastructure.
+
+Rules, sampling, filters, and experiments work the same as for [code evaluators](/docs/evaluation/evaluation-methods/code-evaluators): the endpoint receives the same observation and experiment context and returns the same result shape.
+
+## Create an HTTP evaluator
+
+<Callout type="info">
+  The UI for creating HTTP evaluators is coming soon.
+</Callout>
+
+In the evaluator setup, choose **HTTP** and enter the endpoint URL and optional request headers. Mark header values that contain credentials as secret; they are stored encrypted. Langfuse generates a signing secret for the evaluator that you use to [verify requests](#verify-requests).
+
+Do not put credentials in the URL. The URL is visible to project members; use secret headers instead.
+
+## Request [#request]
+
+Langfuse sends one `POST` request per evaluated observation:
+
+```http
+POST <your endpoint>
+content-type: application/json
+user-agent: Langfuse/1.0
+x-langfuse-signature: t=<unix seconds>,v1=<hex HMAC-SHA256>
+<your custom headers>
+```
+
+```json
+{
+  "evaluator": { "id": "...", "name": "Answer quality", "version": 3 },
+  "execution": {
+    "jobExecutionId": "...",
+    "traceId": "...",
+    "observationId": "..."
+  },
+  "payload": {
+    "observation": {
+      "input": "...",
+      "output": "...",
+      "metadata": {},
+      "toolCalls": [
+        { "id": "...", "name": "search", "arguments": {}, "type": "function", "index": 0 }
+      ]
+    },
+    "experiment": {
+      "itemExpectedOutput": "...",
+      "itemMetadata": {}
+    }
+  }
+}
+```
+
+`payload` matches the [code evaluator context](/docs/evaluation/evaluation-methods/code-evaluators#function-contract). `payload.experiment` is only present when the evaluator runs on a dataset experiment.
+
+## Response [#response]
+
+Return HTTP `2xx` with a JSON body containing at least one score:
+
+```json
+{
+  "scores": [
+    {
+      "name": "Answer quality",
+      "value": 0.87,
+      "dataType": "NUMERIC",
+      "comment": "Covers all expected facts.",
+      "metadata": { "model": "my-judge-v2" }
+    }
+  ]
+}
+```
+
+| Field      | Description                                                                                                                                                                                   |
+| ---------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `name`     | Required score name.                                                                                                                                                                          |
+| `value`    | Required score value. Must match `dataType`.                                                                                                                                                  |
+| `dataType` | Optional. [`NUMERIC`, `CATEGORICAL`, `BOOLEAN`, or `TEXT`](/docs/evaluation/scores/overview#score-types). Without it, `value` must be a number or a string. Boolean values require `BOOLEAN`. |
+| `comment`  | Optional reasoning stored with the score.                                                                                                                                                     |
+| `configId` | Optional [score config](/faq/all/manage-score-configs) ID.                                                                                                                                    |
+| `metadata` | Optional object stored with the score.                                                                                                                                                        |
+
+The same validation rules apply as for [code evaluator scores](/docs/evaluation/evaluation-methods/code-evaluators#function-contract).
+
+## Verify requests [#verify-requests]
+
+Every request is signed with the evaluator's signing secret, using the same scheme as [Langfuse webhooks](/docs/prompt-management/features/webhooks-slack-integrations): `v1` is the hex HMAC-SHA256 of `"<t>.<raw request body>"`. Verify the signature against the raw body before parsing it, and reject old timestamps to prevent replays.
+
+<LangTabs items={["Python", "TypeScript"]}>
+<Tab>
+
+```python
+import hashlib
+import hmac
+import time
+
+
+def verify_signature(raw_body: bytes, header: str, secret: str, tolerance: int = 300) -> bool:
+    parts = dict(p.split("=", 1) for p in header.split(",") if "=" in p)
+    timestamp, signature = parts.get("t", ""), parts.get("v1", "")
+    if not timestamp.isdigit() or abs(time.time() - int(timestamp)) > tolerance:
+        return False
+    expected = hmac.new(
+        secret.encode(), f"{timestamp}.".encode() + raw_body, hashlib.sha256
+    ).hexdigest()
+    return hmac.compare_digest(expected, signature)
+```
+
+</Tab>
+<Tab>
+
+```ts
+import { createHmac, timingSafeEqual } from "node:crypto";
+
+export function verifySignature(
+  rawBody: string,
+  header: string,
+  secret: string,
+  toleranceSeconds = 300,
+): boolean {
+  const parts = Object.fromEntries(
+    header.split(",").map((p) => p.split("=", 2)),
+  );
+  const timestamp = Number(parts.t);
+  if (!timestamp || Math.abs(Date.now() / 1000 - timestamp) > toleranceSeconds)
+    return false;
+  const expected = createHmac("sha256", secret)
+    .update(`${parts.t}.${rawBody}`)
+    .digest("hex");
+  const received = String(parts.v1 ?? "");
+  return (
+    expected.length === received.length &&
+    timingSafeEqual(Buffer.from(expected), Buffer.from(received))
+  );
+}
+```
+
+</Tab>
+</LangTabs>
+
+## Retries and limits [#limits]
+
+Timeouts, connection errors, and HTTP `408`, `429`, and `5xx` responses are retried, up to 3 attempts with backoff. Other `4xx` responses and invalid response bodies fail immediately. Because a request can be delivered more than once, make your endpoint idempotent per `execution.jobExecutionId`.
+
+| Constraint    | Limit                                                                                                                                              |
+| ------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Request size  | 5.5 MB                                                                                                                                             |
+| Response size | 256 KB                                                                                                                                             |
+| Timeout       | 30 seconds by default, configurable with `LANGFUSE_HTTP_EVAL_TIMEOUT_MS` (max 120 seconds).                                                        |
+| Redirects     | Not followed. Use the final URL.                                                                                                                   |
+| Network       | Public hosts on ports 80 and 443 only. Internal services must be [allowlisted](/self-hosting/configuration#http-evaluators) by the instance admin. |
+
+## Debug HTTP evaluator executions
+
+Every execution creates a trace in the environment `langfuse-http-eval`. Filter the tracing table by this environment, or open the execution trace from the related score, to see the request payload, returned scores, latency, and errors. The endpoint URL is recorded as origin and path only; query strings are removed.

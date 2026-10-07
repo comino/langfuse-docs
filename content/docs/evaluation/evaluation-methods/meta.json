@@ -4,6 +4,7 @@
     "llm-as-a-judge",
     "jev-as-a-judge",
     "code-evaluators",
+    "http-evaluators",
     "annotation-queues",
     "scores-via-ui",
     "scores-via-sdk"

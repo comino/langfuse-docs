@@ -108,6 +108,19 @@ When using `inline`, set `LANGFUSE_S3_MEDIA_UPLOAD_INTERNAL_ENDPOINT` if the Lan
 | `LANGFUSE_CODE_EVAL_EXECUTION_WORKER_CONCURRENCY`     |                                   | Optional worker concurrency for code evaluator execution.                                                                                                                                            |
 | `LANGFUSE_CODE_EVAL_LOCAL_TIMEOUT_MS`                 |                                   | Optional timeout in milliseconds for locally executed code evaluators.                                                                                                                               |
 
+## HTTP evaluators [#http-evaluators]
+
+[HTTP evaluators](/docs/evaluation/evaluation-methods/http-evaluators) (beta) are off by default. Configure these variables on both the web and worker containers.
+
+| Variable                                     | Required / Default | Description                                                                                                                                            |
+| -------------------------------------------- | ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `LANGFUSE_HTTP_EVAL_ENABLED`                 | `false`            | Set to `true` to enable HTTP evaluators.                                                                                                               |
+| `LANGFUSE_HTTP_EVAL_TIMEOUT_MS`              | `30000`            | Request timeout in milliseconds. Maximum `120000`.                                                                                                     |
+| `LANGFUSE_HTTP_EVAL_ALLOWED_PORTS`           | `80,443`           | Comma-separated ports evaluator endpoints may use, or `any`.                                                                                           |
+| `LANGFUSE_HTTP_EVAL_WHITELISTED_HOST`        |                    | Comma-separated hostnames allowed even if they resolve to private IPs. Use to reach internal evaluation services. Separate from the webhook allowlist. |
+| `LANGFUSE_HTTP_EVAL_WHITELISTED_IPS`         |                    | Comma-separated IP addresses allowed even if private.                                                                                                  |
+| `LANGFUSE_HTTP_EVAL_WHITELISTED_IP_SEGMENTS` |                    | Comma-separated CIDR ranges allowed even if private.                                                                                                   |
+
 ## Langfuse Assistant [#langfuse-assistant]
 
 The Assistant is available from `>=v4.28.0`. It stays hidden until `LANGFUSE_IN_APP_AGENT_ENABLED=true` is set on the web container and on each worker that should execute Assistant runs. It then uses one instance-wide Langfuse AI model, on Amazon Bedrock, the Anthropic Messages API, an OpenAI-compatible endpoint, or Google Vertex AI (Gemini Enterprise Agent Platform, from `>=v4.39.0`). We recommend the AWS Lambda MicroVM sandbox. The `LANGFUSE_IN_APP_AGENT_SANDBOX_*` variables are worker-only. See [Langfuse Assistant](/self-hosting/configuration/langfuse-assistant).
